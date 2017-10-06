@@ -52,11 +52,13 @@ void free_vtable_lists() {
 //---------------------------------------------------------------------------
 
 const char* get_text_disasm(ea_t ea) {
+	qstring s;
 	static char disasm_buff[MAXSTR];
 	disasm_buff[0] = disasm_buff[MAXSTR - 1] = 0;
 
-	if(generate_disasm_line(ea, disasm_buff, (sizeof(disasm_buff) - 1)))
-		tag_remove(disasm_buff, disasm_buff, (sizeof(disasm_buff) - 1));
+	if(generate_disasm_line(&s, ea))
+		tag_remove(&s);
+	strncpy(disasm_buff, s.c_str(), MAXSTR - 1);
 
 	return disasm_buff;
 }
@@ -78,14 +80,14 @@ static bool check_vtable_load_instruction(ea_t ea_code) {
 //---------------------------------------------------------------------------
 static bool get_vtbl_info(ea_t ea_address, VTBL_info_t &vtbl_info)
 {
-	flags_t flags = get_flags_novalue(ea_address);
-	if (hasRef(flags) && has_any_name(flags) && (isEa(flags) || isUnknown(flags))) {
+	flags_t flags = get_flags(ea_address);
+	if (has_xref(flags) && has_any_name(flags) && (isEa(flags) || is_unknown(flags))) {
 		bool is_move_xref = false;
 		
 		ea_t ea_code_ref = get_first_dref_to(ea_address);
 		if(ea_code_ref && (ea_code_ref != BADADDR)) {
 			do {	
-				if(isCode(get_flags_novalue(ea_code_ref)) && check_vtable_load_instruction(ea_code_ref)) {
+				if(is_code(get_flags(ea_code_ref)) && check_vtable_load_instruction(ea_code_ref)) {
 					is_move_xref = true;
 					break;
 				}			
@@ -103,8 +105,8 @@ static bool get_vtbl_info(ea_t ea_address, VTBL_info_t &vtbl_info)
 			ea_t ea_start = vtbl_info.ea_begin = ea_address;
 			
 			while(true) {
-				flags_t index_flags = get_flags_novalue(ea_address);
-				if(!(isEa(index_flags) || isUnknown(index_flags)))
+				flags_t index_flags = get_flags(ea_address);
+				if(!(isEa(index_flags) || is_unknown(index_flags)))
 					break;
 
 				ea_t ea_index_value = getEa(ea_address);
@@ -112,18 +114,18 @@ static bool get_vtbl_info(ea_t ea_address, VTBL_info_t &vtbl_info)
 					break;
 
 				if(ea_address != ea_start)
-					if(hasRef(index_flags))
+					if(has_xref(index_flags))
 						break;
 
-				flags_t value_flags = get_flags_novalue(ea_index_value);
-				if(!isCode(value_flags)) {
+				flags_t value_flags = get_flags(ea_index_value);
+				if(!is_code(value_flags)) {
 					break;
 				} else {
-					if(isUnknown(index_flags)) {
+					if(is_unknown(index_flags)) {
 #ifndef __EA64__
-						doDwrd(ea_address, sizeof(ea_t));
+						create_dword(ea_address, sizeof(ea_t));
 #else
-						doQwrd(ea_address, sizeof(ea_t));
+						create_qword(ea_address, sizeof(ea_t));
 #endif
 					}
 				}
@@ -211,7 +213,7 @@ tid_t create_vtbl_struct(ea_t vtbl_addr, ea_t vtbl_addr_end, char* vtbl_name, uv
 
 	if (id == BADADDR) {
 		struc_name.clear();
-		struc_name = askstr(HIST_IDENT, NULL, "Default name %s not correct. Enter other structure name: ", struc_name.c_str());
+		ask_str(&struc_name, HIST_IDENT, "Default name %s not correct. Enter other structure name: ", struc_name.c_str());
 		id = add_struc(BADADDR, struc_name.c_str());
 		set_struc_cmt(id, vtbl_name, true);
 	}
@@ -238,19 +240,19 @@ tid_t create_vtbl_struct(ea_t vtbl_addr, ea_t vtbl_addr_end, char* vtbl_name, uv
 			ea = ea + sizeof(ea_t);
 			continue;
 		}
-		if (!isEnabled(method_ea)) break;
+		if (!is_mapped(method_ea)) break;
 
-		flags_t method_flags = getFlags(method_ea);
+		flags_t method_flags = get_flags(method_ea);
 		char* struc_member_name = NULL;
-		if (isFunc(method_flags)) {
+		if (is_func(method_flags)) {
 			method_name = get_short_name(method_ea);
 			if (method_name.length() != 0)
 				struc_member_name = (char*)method_name.c_str();
 		}
 #ifndef __EA64__
-		add_struc_member(new_struc, NULL, offset, dwrdflag(), NULL, sizeof(ea_t));
+		add_struc_member(new_struc, NULL, offset, dword_flag(), NULL, sizeof(ea_t));
 #else
-		add_struc_member(new_struc, NULL, offset, qwrdflag(), NULL, sizeof(ea_t));
+		add_struc_member(new_struc, NULL, offset, qword_flag(), NULL, sizeof(ea_t));
 #endif
 		if (struc_member_name) {
 			if (!set_member_name(new_struc, offset, struc_member_name)) {
@@ -260,7 +262,7 @@ tid_t create_vtbl_struct(ea_t vtbl_addr, ea_t vtbl_addr_end, char* vtbl_name, uv
 		}
 
 		ea = ea + sizeof(ea_t);
-		flags_t ea_flags = getFlags(ea);
+		flags_t ea_flags = get_flags(ea);
 
 		if (has_any_name(ea_flags)) break;
 	}
@@ -308,8 +310,8 @@ void find_vtables()
 
 		segSet.insert(seg);
 		
-		ea_t ea_text = seg->startEA;
-		while (ea_text <= seg->endEA)
+		ea_t ea_text = seg->start_ea;
+		while (ea_text <= seg->end_ea)
 			process_vtbl(ea_text);
 
 	} else {
@@ -327,18 +329,18 @@ void find_vtables()
 				{
 					if (segSet.find(seg) == segSet.end())
 					{
-						char name[8];
-						if (get_true_segm_name(seg, name, SIZESTR(name)) == SIZESTR(".data"))
+						qstring segm_name;
+						get_segm_name(&segm_name, seg);
+						
+						if (strcmp(segm_name.c_str(), ".data") == 0)
 						{
-							if (strcmp(name, ".data") == 0)
-							{
-								logmsg(DEBUG, "search_objects() - .data exist");
-								segSet.insert(seg);
-								ea_t ea_text = seg->startEA;
-								while (ea_text <= seg->endEA)
-									process_vtbl(ea_text);
-							}
+							logmsg(DEBUG, "search_objects() - .data exist");
+							segSet.insert(seg);
+							ea_t ea_text = seg->start_ea;
+							while (ea_text <= seg->end_ea)
+								process_vtbl(ea_text);
 						}
+						
 					}
 				}
 			}
@@ -358,8 +360,8 @@ void find_vtables()
                         if (segSet.find(seg) == segSet.end())
                         {
 							segSet.insert(seg);
-                            ea_t ea_text = seg->startEA;
-							while (ea_text <= seg->endEA)
+                            ea_t ea_text = seg->start_ea;
+							while (ea_text <= seg->end_ea)
 								process_vtbl(ea_text);
                         }
                     }
@@ -422,7 +424,7 @@ static void get_xrefs_to_vtbl()
 	for (ea_t addr = get_first_dref_to(cur_vt_ea); addr != BADADDR; addr = get_next_dref_to(cur_vt_ea, addr))
 	{
 		qstring name;
-		get_func_name2(&name, addr);
+		get_func_name(&name, addr);
 
 		xref_addr.push_back(addr);
 
@@ -433,7 +435,7 @@ static void get_xrefs_to_vtbl()
 }
 
 
-static bool idaapi ct_vtbl_xrefs_window_dblclick(TCustomControl *v, int shift, void *ud)
+static bool idaapi ct_vtbl_xrefs_window_dblclick(TWidget *v, int shift, void *ud)
 {
 	int x, y;
 	place_t *place = get_custom_viewer_place(v, true, &x, &y);
@@ -452,10 +454,9 @@ static bool idaapi show_vtbl_xrefs_window_cb(void *ud)
 	get_xrefs_to_vtbl();
 	if (!xref_list.empty())
 	{
-		HWND hwnd = NULL;
-		TForm *form = create_tform(vtbl_t_list[current_line_pos].vtbl_name.c_str(), &hwnd);
+		TWidget *widget = create_empty_widget(vtbl_t_list[current_line_pos].vtbl_name.c_str());
 
-		object_explorer_info_t *si = new object_explorer_info_t(form);
+		object_explorer_info_t *si = new object_explorer_info_t(widget);
 
 		qvector <qstring>::iterator xref_iter;
 		for (xref_iter = xref_list.begin(); xref_iter != xref_list.end(); xref_iter++)
@@ -463,11 +464,11 @@ static bool idaapi show_vtbl_xrefs_window_cb(void *ud)
 
 		simpleline_place_t s1;
 		simpleline_place_t s2(si->sv.size() - 1);
-		si->cv = create_custom_viewer("", NULL, &s1, &s2, &s1, 0, &si->sv);
-		si->codeview = create_code_viewer(form, si->cv, CDVF_STATUSBAR);
+		// si->cv = create_custom_viewer("", NULL, &s1, &s2, &s1, 0, &si->sv);
+		si->cv = create_custom_viewer("Ctree Item View: ", &s1, &s2, &s1, nullptr, nullptr, nullptr, nullptr);
+		si->codeview = create_code_viewer(si->cv, CDVF_STATUSBAR);
 		set_custom_viewer_handler(si->cv, CVH_DBLCLICK, (void *)ct_vtbl_xrefs_window_dblclick);
-
-		open_tform(form, FORM_ONTOP | FORM_RESTORE);
+		display_widget(widget, WOPN_ONTOP | WOPN_RESTORE);
 
 		return true;
 	}
@@ -482,16 +483,17 @@ static bool idaapi show_vtbl_xrefs_window_cb(void *ud)
 //////////////////////////////////////////////////////////////////////////
 
 
-static void idaapi ct_object_explorer_popup(TCustomControl *v, void *ud) 
+static void idaapi ct_object_explorer_popup(TWidget *v, void *ud) 
 {
-	set_custom_viewer_popup_menu(v, NULL);
-	add_custom_viewer_popup_item(v, "Make VTBL_Srtruct", "S", make_vtbl_struct_cb, ud);
-	add_custom_viewer_popup_item(v, "Show all XREFS to VTBL", "X", show_vtbl_xrefs_window_cb, ud);
+	// TODO(sduquette): add popup menu items
+	// set_custom_viewer_popup_menu(v, NULL);
+	// add_custom_viewer_popup_item(v, "Make VTBL_Srtruct", "S", make_vtbl_struct_cb, ud);
+	// add_custom_viewer_popup_item(v, "Show all XREFS to VTBL", "X", show_vtbl_xrefs_window_cb, ud);
 
 }
 
 
-static bool idaapi ct_object_explorer_keyboard(TCustomControl * /*v*/, int key, int shift, void *ud)
+static bool idaapi ct_object_explorer_keyboard(TWidget * /*v*/, int key, int shift, void *ud)
 {
 	if (shift == 0)
 	{
@@ -499,7 +501,8 @@ static bool idaapi ct_object_explorer_keyboard(TCustomControl * /*v*/, int key, 
 		switch (key)
 		{
 		case IK_ESCAPE:
-			close_tform(si->form, FORM_SAVE | FORM_CLOSE_LATER);
+			// close_tform(si->form, FORM_SAVE | FORM_CLOSE_LATER);
+			close_widget(si->widget, WOPN_CLOSED_BY_ESC);
 			return true;
 
 		case 83: // S
@@ -515,7 +518,7 @@ static bool idaapi ct_object_explorer_keyboard(TCustomControl * /*v*/, int key, 
 }
 
 
-static bool idaapi ct_object_explorer_dblclick(TCustomControl *v, int shift, void *ud)
+static bool idaapi ct_object_explorer_dblclick(TWidget *v, int shift, void *ud)
 {
 	int x, y;
 	place_t *place = get_custom_viewer_place(v, true, &x, &y);
@@ -534,7 +537,7 @@ static qstring get_vtbl_hint(int line_num)
 	current_line_pos = line_num;
 	qstring tag_lines;
 
-	if (isEnabled(vtbl_t_list[line_num].ea_begin))
+	if (is_mapped(vtbl_t_list[line_num].ea_begin))
 	{
 		int flags = calc_default_idaplace_flags();
 		linearray_t ln(&flags);
@@ -549,8 +552,11 @@ static qstring get_vtbl_hint(int line_num)
 		for ( int i=0; i < n; i++ )        
 		{
 			char hint_str[MAXSTR];
-			char* line = ln.down();
-			tag_remove(line, hint_str, sizeof(hint_str));
+			qstring line;
+			line += ln.down()->c_str();
+			tag_remove(&line, hint_str, sizeof(hint_str));
+			strncpy(hint_str, line.c_str(), MAXSTR - 1);
+
 			tag_lines.cat_sprnt((COLSTR(SCOLOR_INV"%s\n", SCOLOR_DREF)), hint_str);
 			used++;
 			int n = qmin(ln.get_linecnt(), 20);
@@ -564,17 +570,17 @@ static qstring get_vtbl_hint(int line_num)
 }
 
 
-int idaapi ui_object_explorer_callback(void *ud, int code, va_list va)
+ssize_t idaapi ui_object_explorer_callback(void *ud, int code, va_list va)
 {
 	object_explorer_info_t *si = (object_explorer_info_t *)ud;
 	switch (code)
 	{
 		case ui_get_custom_viewer_hint:
 		{
-			TCustomControl *viewer	= va_arg(va, TCustomControl *);
-			place_t *place			= va_arg(va, place_t *);
-			int *important_lines	= va_arg(va, int *);
-			qstring &hint			= *va_arg(va, qstring *);
+			TWidget *viewer	= va_arg(va, TWidget *);
+			place_t *place = va_arg(va, place_t *);
+			int *important_lines = va_arg(va, int *);
+			qstring &hint = *va_arg(va, qstring *);
 
 			if ( si->cv == viewer )
 			{
@@ -588,10 +594,10 @@ int idaapi ui_object_explorer_callback(void *ud, int code, va_list va)
 			}
 			break;
 		}
-		case ui_tform_invisible:
+		case ui_widget_invisible:
 		{
-			TForm *f = va_arg(va, TForm *);
-			if ( f == si->form )
+			TWidget *f = va_arg(va, TWidget *);
+			if ( f == si->widget )
 			{
 				delete si;
 				unhook_from_notification_point(HT_UI, ui_object_explorer_callback, NULL);
@@ -607,19 +613,17 @@ void object_explorer_form_init()
 {
 	if (!vtbl_list.empty() && !vtbl_t_list.empty())
 	{
-		HWND hwnd = NULL;
-		TForm *form = create_tform("Object Explorer", &hwnd);
-		if (hwnd == NULL)
+		TWidget *widget = find_widget("Object Explorer");
+		if (widget)
 		{
 			warning("Object Explorer window already open. Switching to it.");
 			logmsg(DEBUG, "Object Explorer window already open. Switching to it.");
-			form = find_tform("Object Explorer");
-			if (form != NULL)
-				switchto_tform(form, true);
+			activate_widget(widget, true);
 			return;
 		}
-
-		object_explorer_info_t *si = new object_explorer_info_t(form);
+		
+		widget = create_empty_widget("Object Explorer");
+		object_explorer_info_t *si = new object_explorer_info_t(widget);
 
 		qvector <qstring>::iterator vtbl_iter;
 		for (vtbl_iter = vtbl_list.begin(); vtbl_iter != vtbl_list.end(); vtbl_iter++)
@@ -627,8 +631,9 @@ void object_explorer_form_init()
 
 		simpleline_place_t s1;
 		simpleline_place_t s2(si->sv.size() - 1);
-		si->cv = create_custom_viewer("", NULL, &s1, &s2, &s1, 0, &si->sv);
-		si->codeview = create_code_viewer(form, si->cv, CDVF_STATUSBAR);
+		// si->cv = create_custom_viewer("", NULL, &s1, &s2, &s1, 0, &si->sv);
+		si->cv = create_custom_viewer("Ctree Item View: ", &s1, &s2, &s1, nullptr, nullptr, nullptr, nullptr);
+		si->codeview = create_code_viewer(si->cv, CDVF_STATUSBAR);
 
 		//custom_viewer_handlers_t cvh = custom_viewer_handlers_t(ct_object_explorer_keyboard, ct_object_explorer_popup, NULL, ct_object_explorer_click);
 		custom_viewer_handlers_t cvh = custom_viewer_handlers_t();
@@ -638,7 +643,7 @@ void object_explorer_form_init()
 		set_custom_viewer_handlers(si->cv, &cvh, si);
 
 		hook_to_notification_point(HT_UI, ui_object_explorer_callback, si);
-		open_tform(form, FORM_TAB | FORM_MENU | FORM_RESTORE);
+		display_widget(widget, WOPN_TAB | WOPN_MENU | WOPN_RESTORE);
 	}
 	else {
 		warning("ObjectExplorer not found any virtual tables here ...");

@@ -33,11 +33,11 @@
 // Simple CustomView Form Init
 struct string_view_form_info_t
 {
-	TForm *form;
-	TCustomControl *cv;
-	TCustomControl *codeview;
+	TWidget *widget;
+	TWidget *cv;
+	TWidget *codeview;
 	strvec_t sv;
-	string_view_form_info_t(TForm *f) : form(f), cv(NULL) {}
+	string_view_form_info_t(TWidget *f) : widget(f), cv(nullptr), codeview(nullptr) {}
 };
 
 bool idaapi show_string_in_custom_view(void *ud, qstring title, qstring str);
@@ -65,7 +65,7 @@ struct earef
 template <class T> bool getVerify32_t(ea_t eaPtr, T &rValue)
 {
 	// Location valid?
-    if (isLoaded(eaPtr))
+    if (is_loaded(eaPtr))
 	{
 		// Get 32bit value
 		rValue = (T) get_32bit(eaPtr);
@@ -98,9 +98,9 @@ inline ea_t getEa(ea_t ea)
 inline BOOL isEa(flags_t f)
 {
     #ifndef __EA64__
-    return(isDwrd(f));
+    return(is_dword(f));
     #else
-    return(isQwrd(f));
+    return(is_qword(f));
     #endif
 }
 

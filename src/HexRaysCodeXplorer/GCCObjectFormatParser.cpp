@@ -40,33 +40,31 @@ GCCObjectFormatParser::~GCCObjectFormatParser()
 
 void GCCObjectFormatParser::getRttiInfo()
 {
-	char buffer[1024];
+	qstring buffer;
 	size_t len;
 	uval_t ordinal;
 	size_t count = get_entry_qty();
 	ea_t ea;
-	std::string tmp;
 	// First collect info about __cxxabiv1:: vtables
 	for (int i = 0; i < count; ++i) {
 		ordinal = get_entry_ordinal(i);
-		len = get_entry_name(ordinal, buffer, 1024);
-		tmp = buffer;
+		len = get_entry_name(&buffer, ordinal);
 		ea = get_entry(ordinal);
 		ea += sizeof(void *) * 2;
 		
-		if (tmp == class_type_info_name)
+		if (buffer == class_type_info_name)
 		{
 			class_type_info_vtbl = ea;
 			set_name(ea, "__cxxabiv1::__class_type_info::vtable", SN_NOWARN);
 		}
 			
-		if (tmp == si_class_type_info_name)
+		if (buffer == si_class_type_info_name)
 		{
 			si_class_type_info_vtbl = ea;
 			set_name(ea, "__cxxabiv1::__si_class_type_info::vtable", SN_NOWARN);
 		}
 			
-		if (tmp == vmi_class_type_info_name)
+		if (buffer == vmi_class_type_info_name)
 		{
 			vmi_class_type_info_vtbl = ea;
 			set_name(ea, "__cxxabiv1::__vmi_class_type_info::vtable", SN_NOWARN);
@@ -91,8 +89,8 @@ void GCCObjectFormatParser::scanSeg4Vftables(segment_t *seg)
 	UINT found = 0;
 	if (seg->size() >= sizeof(ea_t))
 	{
-		ea_t startEA = ((seg->startEA + sizeof(ea_t)) & ~((ea_t)(sizeof(ea_t) - 1)));
-		ea_t endEA = (seg->endEA - sizeof(ea_t));
+		ea_t startEA = ((seg->start_ea + sizeof(ea_t)) & ~((ea_t)(sizeof(ea_t) - 1)));
+		ea_t endEA = (seg->end_ea - sizeof(ea_t));
 
 		for (ea_t ptr = startEA; ptr < endEA; ptr += sizeof(void*))
 		{

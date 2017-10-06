@@ -49,7 +49,7 @@ void callgraph_t::create_edge(int id1, int id2)
 }
 
 
-char * callgraph_t::get_node_label(int n, char *buf, int bufsize) const
+char *callgraph_t::get_node_label(int n, char *buf, int bufsize) const
 {
 	int_ea_map_t::const_iterator it = node2ea.find(n);
 	
@@ -66,13 +66,14 @@ char * callgraph_t::get_node_label(int n, char *buf, int bufsize) const
 		const cinsn_t *i = (const cinsn_t *)item;
 
 		// For some item types, display additional information
+		qstring func_name;
+		qstring constant;
 		switch (item->op)
 		{
 		case cot_call:
-			char buf[MAXSTR];
-			if (get_func_name(e->x->obj_ea, buf, sizeof(buf)) == NULL)
+			if (get_func_name(&func_name, e->x->obj_ea) == 0)
 				ptr += qsnprintf(ptr, endp - ptr, " sub_%a", e->x->obj_ea);
-			ptr += qsnprintf(ptr, endp - ptr, " %s", buf);
+			ptr += qsnprintf(ptr, endp - ptr, " %s", func_name.c_str());
 			break;
 		case cot_ptr: // *x
 		case cot_memptr: // x->m
@@ -95,7 +96,9 @@ char * callgraph_t::get_node_label(int n, char *buf, int bufsize) const
 			// Display helper names and number values
 			APPCHAR(ptr, endp, ' ');
 			e->print1(ptr, endp - ptr, NULL);
-			tag_remove(ptr, ptr, sizeof(ptr));
+			constant = qstring(ptr);
+			tag_remove(&constant);
+			ptr = (char*) constant.c_str();
 			ptr = tail(ptr);
 			break;
 		case cit_goto:
@@ -236,7 +239,7 @@ graph_info_t::graphinfo_list_t graph_info_t::instances;
 //--------------------------------------------------------------------------
 graph_info_t::graph_info_t()
 {
-  form = NULL;
+  widget = NULL;
   gv = NULL;
 }
 
@@ -252,7 +255,7 @@ graph_info_t * graph_info_t::create(ea_t func_ea, citem_t *highlighted)
 	return NULL;
   
   r = new graph_info_t();
-  r->func_ea = pfn->startEA;
+  r->func_ea = pfn->start_ea;
   r->fg.highlighted = highlighted;
   
   size_t num_inst = 0;
@@ -274,14 +277,14 @@ graph_info_t * graph_info_t::create(ea_t func_ea, citem_t *highlighted)
 //--------------------------------------------------------------------------
 bool graph_info_t::get_title(ea_t func_ea, size_t num_inst, qstring *out)
 {
-  // we should succeed in getting the name
-  char func_name[MAXSTR];
-  if ( get_func_name(func_ea, func_name, sizeof(func_name)) == NULL )
-    return false;
+	// we should succeed in getting the name
+	qstring func_name;
+	if ( get_func_name(&func_name, func_ea) == 0)
+		return false;
 
-  out->sprnt("Ctree Graph View: %s %d", func_name, num_inst);
+	out->sprnt("Ctree Graph View: %s %d", func_name, num_inst);
   
-  return true;
+	return true;
 }
 
 

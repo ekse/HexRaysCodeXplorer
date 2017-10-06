@@ -29,11 +29,11 @@
 // Object Explorer Form Init
 struct object_explorer_info_t
 {
-	TForm *form;
-	TCustomControl *cv;
-	TCustomControl *codeview;
+	TWidget *widget;
+	TWidget *cv;
+	TWidget *codeview;
 	strvec_t sv;
-	object_explorer_info_t(TForm *f) : form(f), cv(NULL) {}
+	object_explorer_info_t(TWidget *f) : widget(f), cv(nullptr), codeview(nullptr) {}
 };
 
 void object_explorer_form_init();

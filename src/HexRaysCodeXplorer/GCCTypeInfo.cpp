@@ -28,24 +28,21 @@ GCCTypeInfo *GCCTypeInfo::parseTypeInfo(ea_t ea)
 	GCCTypeInfo * result;
 	
 	GCC_RTTI::type_info tmp;
-	if (!get_many_bytes(ea, (uval_t *)&tmp, sizeof(GCC_RTTI::type_info)))
+	if (!get_bytes(&tmp, ea, sizeof(GCC_RTTI::type_info)))
 		return 0;
 	name_ea = tmp.__type_info_name;
 
-	size_t length = get_max_ascii_length(name_ea, ASCSTR_C, ALOPT_IGNHEADS);
+	size_t length = get_max_strlit_length(name_ea, STRTYPE_C, ALOPT_IGNHEADS);
 
-	char *buffer = new char[length];
-	memset(buffer, 0, length);
+	qstring buffer;
 
-	if (!get_ascii_contents2(name_ea, length, ASCSTR_C, buffer, length)) {
-		delete[] buffer;
+	if (!get_strlit_contents(&buffer, name_ea, length, STRTYPE_C)) {
 		return 0;
 	}
 	qstring name(buffer);
 	qstring demangled_name;
 	name = qstring("_ZTS") + name;
-	delete buffer;
-	int32 res = demangle_name2(&demangled_name, name.c_str(), 0);
+	int32 res = demangle_name(&demangled_name, name.c_str(), 0);
 	if (res != (MT_GCC3 | M_AUTOCRT | MT_RTTI))
 	{
 		return 0;
@@ -59,9 +56,10 @@ GCCTypeInfo *GCCTypeInfo::parseTypeInfo(ea_t ea)
 	result->vtbl = tmp.__type_info_vtable;
 	
 	setUnknown(ea + offsetof(GCC_RTTI::type_info, __type_info_vtable), sizeof(void*));
-	set_offset(ea + offsetof(GCC_RTTI::type_info, __type_info_vtable), 0, 0);
+	
+	op_plain_offset(ea + offsetof(GCC_RTTI::type_info, __type_info_vtable), 0, ea);
 	setUnknown(ea + offsetof(GCC_RTTI::type_info, __type_info_name), sizeof(void*));
-	set_offset(ea + offsetof(GCC_RTTI::type_info, __type_info_name), 0, 0);
+	op_plain_offset(ea + offsetof(GCC_RTTI::type_info, __type_info_name), 0, ea);
 	MakeName(ea, demangled_name, "RTTI_", "");
 
 	if (tmp.__type_info_vtable == class_type_info_vtbl)
@@ -74,7 +72,7 @@ GCCTypeInfo *GCCTypeInfo::parseTypeInfo(ea_t ea)
 	if (tmp.__type_info_vtable == si_class_type_info_vtbl)
 	{
 		GCC_RTTI::__si_class_type_info si_class;
-		if (!get_many_bytes(ea, (uval_t *)&si_class, sizeof(GCC_RTTI::__si_class_type_info)))
+		if (!get_bytes(&si_class, ea, sizeof(GCC_RTTI::__si_class_type_info)))
 		{
 			delete result;
 			return 0;
@@ -87,7 +85,7 @@ GCCTypeInfo *GCCTypeInfo::parseTypeInfo(ea_t ea)
 		}
 
 		setUnknown(ea + offsetof(GCC_RTTI::__si_class_type_info, base), sizeof(void*));
-		set_offset(ea + offsetof(GCC_RTTI::__si_class_type_info, base), 0, 0);
+		op_plain_offset(ea + offsetof(GCC_RTTI::__si_class_type_info, base), 0, ea);
 
 		result->parentsCount = 1;
 		result->parentsTypes = new GCCParentType*[1];
@@ -106,7 +104,7 @@ GCCTypeInfo *GCCTypeInfo::parseTypeInfo(ea_t ea)
 	}
 
 	GCC_RTTI::__vmi_class_type_info vmi_class;
-	if (!get_many_bytes(ea, (uval_t *)&vmi_class, sizeof(GCC_RTTI::__vmi_class_type_info)))
+	if (!get_bytes(&vmi_class, ea, sizeof(GCC_RTTI::__vmi_class_type_info)))
 		return 0;
 
 	vmi_class.vmi_flags;
@@ -117,17 +115,17 @@ GCCTypeInfo *GCCTypeInfo::parseTypeInfo(ea_t ea)
 	ea_t addr = ea + offsetof(GCC_RTTI::__vmi_class_type_info, vmi_bases);
 
 	setUnknown(ea + offsetof(GCC_RTTI::__vmi_class_type_info, vmi_flags), sizeof(void*));
-	doDwrd(ea + offsetof(GCC_RTTI::__vmi_class_type_info, vmi_flags), sizeof(void *));
+	create_dword(ea + offsetof(GCC_RTTI::__vmi_class_type_info, vmi_flags), sizeof(void *));
 
 	setUnknown(ea + offsetof(GCC_RTTI::__vmi_class_type_info, vmi_base_count), sizeof(int));
-	doDwrd(ea + offsetof(GCC_RTTI::__vmi_class_type_info, vmi_base_count), sizeof(int));
+	create_dword(ea + offsetof(GCC_RTTI::__vmi_class_type_info, vmi_base_count), sizeof(int));
 
 	
 
 	GCC_RTTI::__base_class_info baseInfo;
 	for (int i = 0; i < vmi_class.vmi_base_count; ++i, addr += sizeof(baseInfo))
 	{
-		if (!get_many_bytes(addr, (uval_t *)&baseInfo, sizeof(baseInfo)))
+		if (!get_bytes(&baseInfo, addr, sizeof(baseInfo)))
 		{
 			delete result;
 			return 0;
@@ -140,10 +138,10 @@ GCCTypeInfo *GCCTypeInfo::parseTypeInfo(ea_t ea)
 			return 0;
 		}
 		setUnknown(addr + offsetof(GCC_RTTI::__base_class_info, base), sizeof(void*));
-		set_offset(addr + offsetof(GCC_RTTI::__base_class_info, base), 0, 0);
+		op_plain_offset(addr + offsetof(GCC_RTTI::__base_class_info, base), 0, addr);
 
 		setUnknown(addr + offsetof(GCC_RTTI::__base_class_info, vmi_offset_flags), sizeof(void*));
-		doDwrd(addr + offsetof(GCC_RTTI::__base_class_info, vmi_offset_flags), sizeof(int));
+		create_dword(addr + offsetof(GCC_RTTI::__base_class_info, vmi_offset_flags), sizeof(int));
 		result->parentsTypes[i] = new GCCParentType();
 		result->parentsTypes[i]->ea = base->ea;
 		result->parentsTypes[i]->ea = base->ea;

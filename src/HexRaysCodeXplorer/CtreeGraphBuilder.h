@@ -102,13 +102,13 @@ class graph_info_t
 {
 // Actual context variables
 public:
-  callgraph_t fg;		// associated graph maker
+  callgraph_t fg;       // associated graph maker
   graph_viewer_t *gv;	// associated graph_view
-  TForm *form;			// associated TForm
+  TWidget *widget;      // associated TForm
   vdui_t *vu;
   
 
-  ea_t func_ea; // function ea in question
+  ea_t func_ea;  // function ea in question
   qstring title; // the title
 
   size_t func_instance_no;

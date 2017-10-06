@@ -60,7 +60,9 @@ int idaapi obj_fint_t::visit_expr(cexpr_t *e)
 		// get the variable name
 		char expr_name[MAXSTR];
 		e->print1(expr_name, MAXSTR, NULL);
-        tag_remove(expr_name, expr_name, sizeof(expr_name));
+		qstring s{expr_name};
+		tag_remove(&s);
+		strncpy(expr_name, s.c_str(), MAXSTR - 1);
 
 		// check for the target variable
 		if(!strcmp(expr_name, vtbl_name.c_str())) {
@@ -78,7 +80,9 @@ int idaapi obj_fint_t::visit_expr(cexpr_t *e)
 
 					if (target_expr->op == cot_var) {
 						target_expr->print1(expr_name, MAXSTR, NULL);
-						tag_remove(expr_name, expr_name, sizeof(expr_name));
+						qstring s{expr_name};
+						tag_remove(&s);
+						strncpy(expr_name, s.c_str(), MAXSTR - 1);
 						var_name = expr_name;
 
 						bFound = true;
@@ -128,7 +132,9 @@ bool idaapi find_var(void *ud)
 
 			char expr_name[MAXSTR];
 			highlight->print1(expr_name, MAXSTR, NULL);
-			tag_remove(expr_name, expr_name, sizeof(expr_name));
+			qstring s{ expr_name };
+			tag_remove(&s);
+			strncpy(expr_name, s.c_str(), MAXSTR - 1);
 
 			// initialize type rebuilder
 			obj_fint_t obj_find;
@@ -208,16 +214,16 @@ tid_t idaapi merge_types(qvector<qstring> types_to_merge, qstring type_name) {
 								member_t * member_info = get_member(struc_type, offset);
 								if (member_info != NULL) {
 									if (offsets.count(member_info->soff) == 0) {
-										qstring member_name = get_member_name2(member_info->id);
+										qstring member_name = get_member_name(member_info->id);
 										asize_t member_size = get_member_size(member_info);
 
 										if (member_name.find("vftbl_", 0) != -1) {
 											tinfo_t tif;
-											if (get_member_tinfo2(member_info, &tif)) {
-												add_struc_member(struc, member_name.c_str(), member_info->soff, dwrdflag(), NULL, member_size);
+											if (get_member_tinfo(&tif, member_info)) {
+												add_struc_member(struc, member_name.c_str(), member_info->soff, dword_flag(), NULL, member_size);
 												member_t * membr = get_member(struc, member_info->soff);
 												if (membr != NULL) {
-													set_member_tinfo2(struc, membr, 0, tif, SET_MEMTI_COMPATIBLE);
+													set_member_tinfo(struc, membr, 0, tif, SET_MEMTI_COMPATIBLE);
 												}
 											}
 										} else {
@@ -246,7 +252,7 @@ void get_struct_key(struc_t * struc_type, VTBL_info_t vtbl_info, qstring &file_e
 	for ( ea_t offset = get_struc_first_offset(struc_type) ; offset != BADADDR ; offset = get_struc_next_offset(struc_type, offset)) {
 		member_t * member_info = get_member(struc_type, offset);
 		if (member_info != NULL) {
-			qstring member_name = get_member_name2(member_info->id);
+			qstring member_name = get_member_name(member_info->id);
 			asize_t member_size = get_member_size(member_info);
 
 			if (member_name.find("vftbl_", 0) != -1) {
@@ -326,7 +332,7 @@ bool idaapi check_subtype(VTBL_info_t vtbl_info, qstring subtype_name) {
 			for ( ea_t offset = get_struc_first_offset(struc_type) ; offset != BADADDR ; offset = get_struc_next_offset(struc_type, offset)) {
 				member_t * member_info = get_member(struc_type, offset);
 				if (member_info != NULL) {
-					qstring member_name = get_member_name2(member_info->id);
+					qstring member_name = get_member_name(member_info->id);
 					if (member_name.find(search_str, 0) != -1) {
 						bResult = true;
 						break;
@@ -370,9 +376,7 @@ bool idaapi extract_all_types(void *ud)
 			qvector <qstring> types_to_merge;
 			for (ea_t addr = get_first_dref_to(cur_vt_ea); addr != BADADDR; addr = get_next_dref_to(cur_vt_ea, addr)) {
 				qstring name;
-				get_func_name2(&name, addr);
-
-				
+				get_func_name(&name, addr);
 
 				qstring info_msg1;
 				info_msg1.cat_sprnt("\t%s", name.c_str());

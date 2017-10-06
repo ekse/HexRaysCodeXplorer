@@ -45,17 +45,17 @@ bool compilerIs(const char *name)
 
 bool idaapi show_string_in_custom_view(void *ud, qstring title, qstring str)
 {
-	HWND hwnd(NULL);
-	TForm *form = create_tform(title.c_str(), &hwnd);
-	string_view_form_info_t *si = new string_view_form_info_t(form);
+	TWidget *widget = create_empty_widget(title.c_str());
+	string_view_form_info_t *si = new string_view_form_info_t(widget);
 	si->sv.push_back(simpleline_t(str));
 
 	simpleline_place_t s1;
 	simpleline_place_t s2(si->sv.size());
-	si->cv = create_custom_viewer(title.c_str(), NULL, &s1, &s2, &s1, 0, &si->sv);
-	si->codeview = create_code_viewer(form, si->cv, CDVF_NOLINES);
-	set_custom_viewer_handlers(si->cv, NULL, si);
-	open_tform(form, FORM_ONTOP | FORM_RESTORE);
+	// si->cv = create_custom_viewer(title.c_str(), NULL, &s1, &s2, &s1, 0, &si->sv);
+	si->cv = create_custom_viewer("Ctree Item View: ", &s1, &s2, &s1, nullptr, nullptr, nullptr, nullptr);
+	si->codeview = create_code_viewer(si->cv, CDVF_NOLINES);
+	set_custom_viewer_handlers(si->cv, nullptr, si);
+	display_widget(widget, WOPN_ONTOP | WOPN_RESTORE);
 
 	return false;
 }
@@ -298,7 +298,7 @@ void idaapi setUnknown(ea_t ea, asize_t size)
 			break;
 		else
 		{
-			do_unknown(ea, DOUNK_SIMPLE);
+			del_items(ea);
 			ea += (ea_t)isize, size -= isize;
 		}
 	};
@@ -324,16 +324,16 @@ bool MakeArray(ea_t ea, size_t nitems)
 	opinfo_t ti;
 	asize_t itemsize;
 	tid_t tid;
-	flags_t flags = getFlags(ea);
-	if (isCode(flags) || isTail(flags) || isAlign(flags))
+	flags_t flags = get_flags(ea);
+	if (is_code(flags) || is_tail(flags) || is_align(flags))
 		return false;
 
-	if (isUnknown(flags))
+	if (is_unknown(flags))
 		flags = 0;
 
-	if (isStruct(flags))
+	if (is_struct(flags))
 	{
-		if (get_opinfo(ea, 0, flags, &ti) == 0)
+		if (get_opinfo(&ti, ea, 0, flags) == 0)
 			return false;
 		itemsize = get_data_elsize(ea, flags, &ti);
 		tid = ti.tid;
@@ -344,5 +344,5 @@ bool MakeArray(ea_t ea, size_t nitems)
 		tid = BADADDR;
 	}
 
-	return do_data_ex(ea, flags, itemsize * nitems, tid);
+	return create_data(ea, flags, itemsize * nitems, tid);
 }

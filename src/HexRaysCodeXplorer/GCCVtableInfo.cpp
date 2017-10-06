@@ -56,7 +56,7 @@ GCCVtableInfo *GCCVtableInfo::parseVtableInfo(ea_t ea)
 	GCC_RTTI::__vtable_info vtable;
 	ea_t func;
 	ea_t addr;
-	if (!get_many_bytes(ea, (uval_t *)&vtable, sizeof(GCC_RTTI::__vtable_info)))
+	if (!get_bytes(&vtable, ea, sizeof(GCC_RTTI::__vtable_info)))
 		return 0;
 
 	// Check ptrdiff is 0 for origin vtable
@@ -123,7 +123,7 @@ bool GCCVtableInfo::parseVtableInnerInfo(ea_t ea, GCCVtable *vtbl)
 	GCC_RTTI::__vtable_info vtable;
 	ea_t func;
 	ea_t addr;
-	if (!get_many_bytes(ea, (uval_t *)&vtable, sizeof(GCC_RTTI::__vtable_info)))
+	if (!get_bytes(&vtable, ea, sizeof(GCC_RTTI::__vtable_info)))
 		return false;
 
 	if (vtable.ptrdiff >= 0)

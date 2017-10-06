@@ -65,7 +65,7 @@ static void print_to_error_file(const char *error_msg) {
 
 void logmsg(unsigned int level, const char *fmt, ...)
 {
-    va_list arglist;
+	va_list arglist;
 	
 	if (level > CURRENT_DEBUG_LEVEL)
 		return;
@@ -80,9 +80,9 @@ void logmsg(unsigned int level, const char *fmt, ...)
 			print_to_error_file(fmt);
 			break;
 		default:
-			msg(fmt, arglist);
+			vmsg(fmt, arglist);
 			break;
 	}
 	
-    va_end(arglist);
+	va_end(arglist);
 }

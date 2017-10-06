@@ -38,6 +38,6 @@ enum DEBUG_LEVELS {
 	DEBUG // print to IDA
 };
 
-#define CURRENT_DEBUG_LEVEL ERROR
+#define CURRENT_DEBUG_LEVEL DEBUG
 
 #endif

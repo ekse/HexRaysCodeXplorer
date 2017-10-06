@@ -45,7 +45,7 @@ IObjectFormatParser *objectFormatParser = 0;
 // Hex-Rays API pointer
 hexdsp_t *hexdsp = NULL;
 
-static bool inited = false;
+static bool initialized = false;
 
 // Hotkey for the new command
 static const char hotkey_dg[] = "T";
@@ -78,8 +78,6 @@ static const char hotkey_rv[] = "E"; // Automatic renaming of duplicating variab
 static int hotcode_de;
 
 static const char * crypto_prefix_param = "CRYPTO";
-
-
 
 //--------------------------------------------------------------------------
 // Helper class to build graph from ctree.
@@ -130,7 +128,7 @@ int graph_builder_t::process(citem_t *item)
 	if (parents.size() > 1)             // The current item has a parent?
 	{
 		int p = reverse[parents.back()];    // Parent node number
-											// cg.add_edge(p, n);               // Add edge from the parent to the current item
+		// cg.add_edge(p, n);               // Add edge from the parent to the current item
 		cg.create_edge(p, n);
 	}
 
@@ -145,7 +143,7 @@ int graph_builder_t::process(citem_t *item)
   callgraph_t *fg = &gi->fg
 
 //--------------------------------------------------------------------------
-static int idaapi gr_callback(void *ud, int code, va_list va)
+static ssize_t idaapi gr_callback(void *ud, int code, va_list va)
 {
 	bool result = false;
 	switch (code)
@@ -261,30 +259,29 @@ static bool idaapi display_ctree_graph(void *ud)
 	qstring title = gi->title;
 
 	HWND hwnd = NULL;
-	TForm *form = create_tform(title.c_str(), &hwnd);
+	TWidget *widget = create_empty_widget(title.c_str());
 	if (hwnd == NULL)
 	{
 		warning("Ctree Graph window already open. Switching to it.");
 		logmsg(DEBUG, "Ctree Graph window already open. Switching to it.");
-		form = find_tform(title.c_str());
-		if (form != NULL)
-			switchto_tform(form, true);
+		widget = find_widget(title.c_str());
+		if (widget != NULL)
+			activate_widget(widget, true);
 		return true;
 	}
 
 	if (hwnd != NULL)
 	{
 		gi->vu = (vdui_t *)ud;
-		gi->form = form;
-		gi->gv = create_graph_viewer(form, id, gr_callback, gi, 0);
-		open_tform(form, FORM_TAB | FORM_MENU | FORM_QWIDGET);
+		gi->widget = widget;
+		gi->gv = create_graph_viewer("ctree", id, gr_callback, gi, 0);
+		display_widget(widget, WOPN_TAB | WOPN_MENU);
 
 		viewer_fit_window(gi->gv);
 	}
 
 	return true;
 }
-
 
 // Get pointer to func_t by routine name
 func_t * get_func_by_name(const char *func_name)
@@ -300,10 +297,11 @@ func_t * get_func_by_name(const char *func_name)
 			if (func != NULL)
 			{
 				memset(tmp, 0x00, sizeof(tmp));
-				char *func_n = get_func_name(func->startEA, tmp, sizeof(tmp));
+				qstring* func_n{};
+				get_func_name(func_n, func->start_ea);
 				if (func_n != NULL)
 				{
-					if (!strcmp(func_name, func_n))
+					if (!strcmp(func_name, func_n->c_str()))
 					{
 						result_func = func;
 						break;
@@ -326,7 +324,9 @@ static char* get_expr_name(citem_t *citem)
 
 		// retrieve the name of the routine
 		e->print1(citem_name, sizeof(citem_name), NULL);
-		tag_remove(citem_name, citem_name, MAXSTR);
+		qstring expr_name{citem_name};
+		tag_remove(&expr_name);
+		strcpy(citem_name, expr_name.c_str());
 
 		return citem_name;
 	}
@@ -357,7 +357,7 @@ static bool idaapi decompile_func(vdui_t &vu)
 			{
 				func_t * func = get_func_by_name(proc_name);
 				if (func != NULL)
-					vdui_t * decompiled_window = open_pseudocode(func->startEA, -1);
+					vdui_t * decompiled_window = open_pseudocode(func->start_ea, -1);
 			}
 		}
 	}
@@ -581,15 +581,17 @@ static int idaapi callback(void *, hexrays_event_t event, va_list va)
 	{
 		vdui_t &vu = *va_arg(va, vdui_t *);
 		// add new command to the popup menu
-		add_custom_viewer_popup_item(vu.ct, "Display Ctree Graph", hotkey_dg, display_ctree_graph, &vu);
-		add_custom_viewer_popup_item(vu.ct, "Object Explorer", hotkey_ce, display_vtbl_objects, &vu);
-		add_custom_viewer_popup_item(vu.ct, "REconstruct Type", hotkey_rt, reconstruct_type, &vu);
-		add_custom_viewer_popup_item(vu.ct, "Extract Types to File", hotkey_et, extract_all_types, &vu);
-		add_custom_viewer_popup_item(vu.ct, "Extract Ctrees to File", hotkey_ec, extract_all_ctrees, &vu);
-		add_custom_viewer_popup_item(vu.ct, "Ctree Item View", hotkey_vc, show_current_citem_in_custom_view, &vu);
-		add_custom_viewer_popup_item(vu.ct, "Jump to Disasm", hotkey_gd, decompiled_line_to_disasm, &vu);
-		add_custom_viewer_popup_item(vu.ct, "Show/Copy item offset", hotkey_so, show_offset_in_windbg_format, &vu);
-		add_custom_viewer_popup_item(vu.ct, "Rename vars", hotkey_rv, rename_simple_expr, &vu);
+		// TODO(sduquette): port this code, we need to call attach_action_to_popup().
+		// attach_action_to_popup(vu.ct, nullptr, "codexplorer::display_object_explorer");
+		// add_custom_viewer_popup_item(vu.ct, "Display Ctree Graph", hotkey_dg, display_ctree_graph, &vu);
+		// add_custom_viewer_popup_item(vu.ct, "Object Explorer", hotkey_ce, display_vtbl_objects, &vu);
+		// add_custom_viewer_popup_item(vu.ct, "REconstruct Type", hotkey_rt, reconstruct_type, &vu);
+		// add_custom_viewer_popup_item(vu.ct, "Extract Types to File", hotkey_et, extract_all_types, &vu);
+		// add_custom_viewer_popup_item(vu.ct, "Extract Ctrees to File", hotkey_ec, extract_all_ctrees, &vu);
+		// add_custom_viewer_popup_item(vu.ct, "Ctree Item View", hotkey_vc, show_current_citem_in_custom_view, &vu);
+		// add_custom_viewer_popup_item(vu.ct, "Jump to Disasm", hotkey_gd, decompiled_line_to_disasm, &vu);
+		// add_custom_viewer_popup_item(vu.ct, "Show/Copy item offset", hotkey_so, show_offset_in_windbg_format, &vu);
+		// add_custom_viewer_popup_item(vu.ct, "Rename vars", hotkey_rv, rename_simple_expr, &vu);
 	}
 	break;
 
@@ -664,22 +666,20 @@ void parse_plugin_options(qstring &options, bool &dump_types, bool &dump_ctrees,
 // Initialize the plugin.
 int idaapi init(void)
 {
-	logmsg(INFO, "\nHexRaysCodeXplorer plugin by @REhints loaded.\n\n\n");
+	logmsg(INFO, "HexRaysCodeXplorer plugin by @REhints loaded.\n");
 
 	if (!init_hexrays_plugin())
 		return PLUGIN_SKIP; // no decompiler
 
-	bool dump_types = false,
-		dump_ctrees = false;
+	bool dump_types = false, dump_ctrees = false;
 	qstring crypto_prefix;
 
 	qstring options = get_plugin_options(PLUGIN.wanted_name);
 	parse_plugin_options(options, dump_types, dump_ctrees, crypto_prefix);
 
-	install_hexrays_callback(callback, NULL);
-	const char *hxver = get_hexrays_version();
-	logmsg(INFO, "Hex-rays version %s has been detected, %s ready to use\n", hxver, PLUGIN.wanted_name);
-	inited = true;
+	install_hexrays_callback(callback, nullptr);
+	logmsg(INFO, "Hex-rays version %s has been detected\n", get_hexrays_version());
+	initialized = true;
 	hotcode_dg = 84; // T
 	hotcode_ce = 79; // O
 	hotcode_rt = 82; // R
@@ -694,7 +694,7 @@ int idaapi init(void)
 	static int hotcode_vc;
 
 	if (dump_ctrees || dump_types) {
-		autoWait();
+		auto_wait();
 
 		if (dump_types) {
 			qstring options_msg = "Dumping types\n";
@@ -716,7 +716,6 @@ int idaapi init(void)
 		}
 
 		logmsg(INFO, "\nHexRaysCodeXplorer plugin by @REhints exiting...\n\n\n");
-		//qexit(0);
 	}
 
 	return PLUGIN_KEEP;
@@ -725,19 +724,20 @@ int idaapi init(void)
 //--------------------------------------------------------------------------
 void idaapi term(void)
 {
-	if (inited)
+	if (initialized)
 	{
-		logmsg(INFO, "\nHexRaysCodeXplorer plugin by @REhints terminated.\n\n\n");
+		logmsg(INFO, "HexRaysCodeXplorer plugin by @REhints terminated.\n");
 		remove_hexrays_callback(callback, NULL);
 		term_hexrays_plugin();
 	}
 }
 
 //--------------------------------------------------------------------------
-void idaapi run(int)
+bool idaapi run(size_t)
 {
 	// This function won't be called because our plugin is invisible (no menu
 	// item in the Edit, Plugins menu) because of PLUGIN_HIDE
+	return true;
 }
 
 //--------------------------------------------------------------------------

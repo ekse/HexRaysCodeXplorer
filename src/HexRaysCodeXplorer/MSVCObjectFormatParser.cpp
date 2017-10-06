@@ -51,8 +51,8 @@ bool vftable::getTableInfo(ea_t ea, vtinfo &info)
 	// Start of a vft should have an xref and a name (auto, or user, etc).
 	// Ideal flags 32bit: FF_DWRD, FF_0OFF, FF_REF, FF_NAME, FF_DATA, FF_IVL
 	//dumpFlags(ea);
-	flags_t flags = get_flags_novalue(ea);
-	if (hasRef(flags) && has_any_name(flags) && (isEa(flags) || isUnknown(flags)))
+	flags_t flags = get_flags(ea);
+	if (has_xref(flags) && has_any_name(flags) && (isEa(flags) || is_unknown(flags)))
 	{
 		// Get raw (auto-generated mangled, or user named) vft name
 		//if (!get_name(BADADDR, ea, info.name, SIZESTR(info.name)))
@@ -65,8 +65,8 @@ bool vftable::getTableInfo(ea_t ea, vtinfo &info)
 			// Should be an ea_t offset to a function here (could be unknown if dirty IDB)
 			// Ideal flags for 32bit: FF_DWRD, FF_0OFF, FF_REF, FF_NAME, FF_DATA, FF_IVL
 			//dumpFlags(ea);
-			flags_t indexFlags = get_flags_novalue(ea);
-			if (!(isEa(indexFlags) || isUnknown(indexFlags)))
+			flags_t indexFlags = get_flags(ea);
+			if (!(isEa(indexFlags) || is_unknown(indexFlags)))
 			{
 				break;
 			}
@@ -83,8 +83,8 @@ bool vftable::getTableInfo(ea_t ea, vtinfo &info)
 			}
 
 			// Should see code for a good vft method here, but it could be dirty
-			flags_t flags = get_flags_novalue(memberPtr);
-			if (!(isCode(flags) || isUnknown(flags)))
+			flags_t flags = get_flags(memberPtr);
+			if (!(is_code(flags) || is_unknown(flags)))
 			{
 				break;
 			}
@@ -92,7 +92,7 @@ bool vftable::getTableInfo(ea_t ea, vtinfo &info)
 			if (ea != start)
 			{
 				// If we see a ref after first index it's probably the beginning of the next vft or something else
-				if (hasRef(indexFlags))
+				if (has_xref(indexFlags))
 				{
 					break;
 				}
@@ -195,13 +195,15 @@ static int readIdaString(ea_t ea, OUT LPSTR buffer, int bufferSize)
 	else
 	{
 		// Read string at ea if it exists
-		int len = get_max_ascii_length(ea, ASCSTR_C, ALOPT_IGNHEADS);
+		int len = get_max_strlit_length(ea, STRTYPE_C, ALOPT_IGNHEADS);
 		if (len > 0)
 		{
 			if (len > bufferSize) len = bufferSize;
-			if (get_ascii_contents2(ea, len, ASCSTR_C, buffer, bufferSize))
+			qstring s;
+			if (get_strlit_contents(&s, ea, len, STRTYPE_C))
 			{
 				// Cache it
+				strcpy(buffer, s.c_str());
 				buffer[len - 1] = 0;
 				stringCache[ea] = buffer;
 			}
@@ -229,11 +231,11 @@ bool RTTI::type_info::isValid(ea_t typeInfo)
 	if (tdSet.find(typeInfo) != tdSet.end())
 		return true;
 
-	if (isLoaded(typeInfo))
+	if (is_loaded(typeInfo))
 	{
 		// Verify what should be a vftable
 		ea_t ea = getEa(typeInfo + offsetof(type_info, vfptr));
-		if (isLoaded(ea))
+		if (is_loaded(ea))
 		{
 			// _M_data should be NULL statically
 			ea_t _M_data = BADADDR;
@@ -279,7 +281,7 @@ bool RTTI::type_info::isTypeName(ea_t name)
 // Return TRUE if address is a valid RTTI structure
 BOOL RTTI::_RTTICompleteObjectLocator::isValid(ea_t col)
 {
-	if (isLoaded(col))
+	if (is_loaded(col))
 	{
 		// Check signature
 		UINT signature = -1;
@@ -335,7 +337,7 @@ bool RTTI::_RTTIBaseClassDescriptor::isValid(ea_t bcd, ea_t colBase64)
 	if (bcdSet.find(bcd) != bcdSet.end())
 		return true;
 
-	if (isLoaded(bcd))
+	if (is_loaded(bcd))
 	{
 		// Check attributes flags first
 		UINT attributes = -1;
@@ -368,7 +370,7 @@ bool RTTI::_RTTIClassHierarchyDescriptor::isValid(ea_t chd, ea_t colBase64)
 	if (chdSet.find(chd) != chdSet.end())
 		return true;
 
-	if (isLoaded(chd))
+	if (is_loaded(chd))
 	{
 		// signature should be zero statically
 		UINT signature = -1;
@@ -397,7 +399,7 @@ bool RTTI::_RTTIClassHierarchyDescriptor::isValid(ea_t chd, ea_t colBase64)
 								ea_t baseClassArray = (colBase64 + (UINT64)baseClassArrayOffset);
 #endif
 
-								if (isLoaded(baseClassArray))
+								if (is_loaded(baseClassArray))
 								{
 #ifndef __EA64__
 									ea_t baseClassDescriptor = getEa(baseClassArray);
@@ -684,10 +686,10 @@ inline void killAnteriorComments(ea_t ea)
 // Force a memory location to be DWORD size
 void fixDword(ea_t ea)
 {
-	if (!isDwrd(get_flags_novalue(ea)))
+	if (!is_dword(get_flags(ea)))
 	{
 		setUnknown(ea, sizeof(DWORD));
-		doDwrd(ea, sizeof(DWORD));
+		create_dword(ea, sizeof(DWORD));
 	}
 }
 
@@ -697,14 +699,14 @@ void fixEa(ea_t ea)
 #ifndef __EA64__
 	if (!isDwrd(get_flags_novalue(ea)))
 #else
-	if (!isQwrd(get_flags_novalue(ea)))
+	if (!is_qword(get_flags(ea)))
 #endif
 	{
 		setUnknown(ea, sizeof(ea_t));
 #ifndef __EA64__
 		doDwrd(ea, sizeof(ea_t));
 #else
-		doQwrd(ea, sizeof(ea_t));
+		create_qword(ea, sizeof(ea_t));
 #endif
 	}
 }
@@ -712,14 +714,14 @@ void fixEa(ea_t ea)
 // Make address a function
 void fixFunction(ea_t ea)
 {
-	flags_t flags = get_flags_novalue(ea);
-	if (!isCode(flags))
+	flags_t flags = get_flags(ea);
+	if (!is_code(flags))
 	{
 		create_insn(ea);
 		add_func(ea, BADADDR);
 	}
 	else
-		if (!isFunc(flags))
+		if (!is_func(flags))
 			add_func(ea, BADADDR);
 }
 
@@ -727,7 +729,7 @@ void fixFunction(ea_t ea)
 bool getVerifyEa(ea_t ea, ea_t &rValue)
 {
 	// Location valid?
-	if (isLoaded(ea))
+	if (is_loaded(ea))
 	{
 		// Get ea_t value
 		rValue = getEa(ea);
@@ -764,12 +766,14 @@ BOOL getPlainTypeName(LPCSTR mangled, LPSTR outStr)
 	else
 		// IDA demangler for everything else
 	{
-		int result = demangle_name(outStr, (MAXSTR - 1), mangled, (MT_MSCOMP | MNG_NODEFINIT));
+		qstring s;
+		int result = demangle_name(&s, mangled, (MT_MSCOMP | MNG_NODEFINIT));
 		if (result < 0)
 		{
 			return(FALSE);
 		}
 
+		strncpy(outStr, s.c_str(), MAXSTR - 1);
 		// No inhibit flags will drop this
 		if (LPSTR ending = strstr(outStr, "::`vftable'"))
 			*ending = 0;
@@ -784,8 +788,8 @@ void idaapi scanSeg4Cols(segment_t *seg)
 	unsigned int found = 0;
 	if (seg->size() >= sizeof(RTTI::_RTTICompleteObjectLocator))
 	{
-		ea_t startEA = ((seg->startEA + sizeof(UINT)) & ~((ea_t)(sizeof(UINT) - 1)));
-		ea_t endEA = (seg->endEA - sizeof(RTTI::_RTTICompleteObjectLocator));
+		ea_t startEA = ((seg->start_ea + sizeof(UINT)) & ~((ea_t)(sizeof(UINT) - 1)));
+		ea_t endEA = (seg->end_ea - sizeof(RTTI::_RTTICompleteObjectLocator));
 
 		for (ea_t ptr = startEA; ptr < endEA;)
 		{
@@ -837,10 +841,10 @@ void idaapi findCols()
 			{
 				if (segSet.find(seg) == segSet.end())
 				{
-					char name[8];
-					if (get_true_segm_name(seg, name, SIZESTR(name)) == SIZESTR(".data"))
+					qstring name;
+					if (get_segm_name(&name, seg, SIZESTR(name)) == SIZESTR(".data"))
 					{
-						if (strcmp(name, ".data") == 0)
+						if (strcmp(name.c_str(), ".data") == 0)
 						{
 							segSet.insert(seg);
 							scanSeg4Cols(seg);
@@ -882,8 +886,8 @@ void idaapi scanSeg4Vftables(segment_t *seg, eaRefMap &colMap)
 	UINT found = 0;
 	if (seg->size() >= sizeof(ea_t))
 	{
-		ea_t startEA = ((seg->startEA + sizeof(ea_t)) & ~((ea_t)(sizeof(ea_t) - 1)));
-		ea_t endEA = (seg->endEA - sizeof(ea_t));
+		ea_t startEA = ((seg->start_ea + sizeof(ea_t)) & ~((ea_t)(sizeof(ea_t) - 1)));
+		ea_t endEA = (seg->end_ea - sizeof(ea_t));
 		eaRefMap::iterator colEnd = colMap.end();
 
 		for (ea_t ptr = startEA; ptr < endEA; ptr += sizeof(UINT))
@@ -943,10 +947,10 @@ void idaapi findVftables()
 			{
 				if (segSet.find(seg) == segSet.end())
 				{
-					char name[8];
-					if (get_true_segm_name(seg, name, SIZESTR(name)) == SIZESTR(".data"))
+					qstring name;
+					if (get_segm_name(&name, seg, SIZESTR(name)) == SIZESTR(".data"))
 					{
-						if (strcmp(name, ".data") == 0)
+						if (strcmp(name.c_str(), ".data") == 0)
 						{
 							segSet.insert(seg);
 							scanSeg4Vftables(seg, colMap);

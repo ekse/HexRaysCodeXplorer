@@ -106,15 +106,16 @@ char * ctree_dumper_t::parse_ctree_item(citem_t *item, char *buf, int bufsize) c
 		const cinsn_t *i = (const cinsn_t *)item;
 
 		// For some item types, display additional information
+		qstring func_name;
+		qstring s;
 		switch (item->op)
 		{
 		case cot_call:
-			char buf[MAXSTR];
 			if (e->x->op == cot_obj) {
-				if (get_func_name(e->x->obj_ea, buf, sizeof(buf)) == NULL)
+				if (get_func_name(&func_name, e->x->obj_ea) == NULL)
 					ptr += qsnprintf(ptr, endp - ptr, " sub_%a", e->x->obj_ea);
 				else 
-					ptr += qsnprintf(ptr, endp - ptr, " %s", buf);
+					ptr += qsnprintf(ptr, endp - ptr, " %s", func_name.c_str());
 			}
 			break;
 		case cot_ptr: // *x
@@ -137,7 +138,9 @@ char * ctree_dumper_t::parse_ctree_item(citem_t *item, char *buf, int bufsize) c
 			// Display helper names and number values
 			APPCHAR(ptr, endp, ' ');
 			e->print1(ptr, endp - ptr, NULL);
-			tag_remove(ptr, ptr, sizeof(ptr));
+			s = qstring(ptr);
+			tag_remove(&s);
+			ptr = (char*) s.c_str();
 			ptr = tail(ptr);
 			break;
 		case cit_goto:
@@ -280,7 +283,7 @@ inline bool func_name_has_prefix(qstring &prefix, ea_t startEA) {
 	if (prefix.length() <= 0)
 		return false;
 	
-	if (get_func_name2(&func_name, startEA) == 0)
+	if (get_func_name(&func_name, startEA) == 0)
 		return false;
 	
 	if (func_name.length() <= 0)
@@ -307,7 +310,7 @@ bool idaapi dump_funcs_ctree(void *ud, qstring &crypto_prefix)
 		
 		func_t *function = getn_func(i);
 		if (function != NULL) {
-			bool crypto_flag = func_name_has_prefix(crypto_prefix, function->startEA);
+			bool crypto_flag = func_name_has_prefix(crypto_prefix, function->start_ea);
 			
 			// skip libs that are not marked as crypto
 			if ( ((function->flags & FUNC_LIB) != 0) && !crypto_flag )
@@ -316,11 +319,11 @@ bool idaapi dump_funcs_ctree(void *ud, qstring &crypto_prefix)
 			// From this point on, we have a function outside of lib or a crypto one
 			
 			// Ignore functions less than MIN_FUNC_SIZE_DUMP bytes
-			if ( ((function->endEA - function->startEA) < MIN_FUNC_SIZE_DUMP) && !crypto_flag )
+			if ( ((function->end_ea - function->start_ea) < MIN_FUNC_SIZE_DUMP) && !crypto_flag )
 				continue;
 			
 			// If function is bigger than MIN_HEURISTIC_FUNC_SIZE_DUMP, mark as being triggered by the heuristic
-			if (function->endEA - function->startEA > MIN_HEURISTIC_FUNC_SIZE_DUMP)
+			if (function->end_ea - function->start_ea > MIN_HEURISTIC_FUNC_SIZE_DUMP)
 				heuristic_flag = 1;
 				
 			// dump up to N_CRYPTO_FUNCS_TO_DUMP crypto functions
@@ -341,21 +344,21 @@ bool idaapi dump_funcs_ctree(void *ud, qstring &crypto_prefix)
 
 					func_dump.func_depth = -1;
 
-					func_dump.func_start = function->startEA;
-					func_dump.func_end = function->endEA;
+					func_dump.func_start = function->start_ea;
+					func_dump.func_end = function->end_ea;
 
 					qstring func_name;
-					if (get_func_name2(&func_name, function->startEA) != 0) {
+					if (get_func_name(&func_name, function->start_ea) != 0) {
 						if (func_name.length() > 0) {
 							func_dump.func_name = func_name;
 						}
 					}
 					
 					func_parent_iterator_t fpi(function);
-					for (ea_t addr = get_first_cref_to(function->startEA); addr != BADADDR; addr = get_next_cref_to(function->startEA, addr)) {
+					for (ea_t addr = get_first_cref_to(function->start_ea); addr != BADADDR; addr = get_next_cref_to(function->start_ea, addr)) {
 						func_t *referer = get_func(addr);
 						if (referer != NULL) {
-							func_dump.referres.push_back(referer->startEA);
+							func_dump.referres.push_back(referer->start_ea);
 						}
 					}
 					
@@ -368,7 +371,7 @@ bool idaapi dump_funcs_ctree(void *ud, qstring &crypto_prefix)
 					
 					count++;
 					
-					data_to_dump[function->startEA] = func_dump;
+					data_to_dump[function->start_ea] = func_dump;
 				}
 			}
 		}
@@ -387,10 +390,10 @@ bool idaapi extract_all_ctrees(void *ud)
 	va_list va;
 	va_end(va);
 	
-	char * crypto_prefix = vaskstr(0, default_prefix.c_str(), "Enter prefix of crypto function names", va);
-	if((crypto_prefix != NULL) && (strlen(crypto_prefix) > 0)) {
-		qstring qcrypt_prefix = crypto_prefix;
-		dump_funcs_ctree(NULL, qcrypt_prefix);
+	qstring crypto_prefix;
+	ask_str(&crypto_prefix, NULL, "Enter prefix of crypto function names", va);
+	if(crypto_prefix.length() > 0) {
+		dump_funcs_ctree(NULL, crypto_prefix);
 	} else {
 		warning("Incorrect prefix!!");
 	}
@@ -402,21 +405,20 @@ bool idaapi extract_all_ctrees(void *ud)
 // Ctree Item Form Init
 struct func_ctree_info_t
 {
-	TForm *form;
-	TCustomControl *cv;
-	TCustomControl *codeview;
+	TWidget *widget;
+	TWidget *cv;
+	TWidget *codeview;
 	strvec_t sv;
-	func_ctree_info_t(TForm *f) : form(f), cv(NULL) {}
+	func_ctree_info_t(TWidget *f) : widget(f), cv(nullptr), codeview(nullptr){}
 };
 
 
 bool idaapi show_citem_custom_view(void *ud, qstring ctree_item, qstring item_name)
 {
-	HWND hwnd = NULL;
 	qstring form_name = "Ctree Item View: ";
 	form_name.append(item_name);
-	TForm *form = create_tform(form_name.c_str(), &hwnd);
-	func_ctree_info_t *si = new func_ctree_info_t(form);
+	TWidget *widget = create_empty_widget(form_name.c_str());
+	func_ctree_info_t *si = new func_ctree_info_t(widget);
 
 	istringstream s_citem_str(ctree_item.c_str());
 	string tmp_str;
@@ -428,10 +430,11 @@ bool idaapi show_citem_custom_view(void *ud, qstring ctree_item, qstring item_na
 
 	simpleline_place_t s1;
 	simpleline_place_t s2(ctree_item.size());
-	si->cv = create_custom_viewer("Ctree Item View: ", NULL, &s1, &s2, &s1, 0, &si->sv);
-	si->codeview = create_code_viewer(form, si->cv, CDVF_NOLINES);
+	// si->cv = create_custom_viewer("Ctree Item View: ", NULL, &s1, &s2, &s1, 0, &si->sv);
+	si->cv = create_custom_viewer("Ctree Item View: ", &s1, &s2, &s1, nullptr, nullptr, nullptr, nullptr);
+	si->codeview = create_code_viewer(si->cv, CDVF_NOLINES);
 	set_custom_viewer_handlers(si->cv, NULL, si);
-	open_tform(form, FORM_ONTOP | FORM_RESTORE);
+	display_widget(widget, WOPN_ONTOP | WOPN_RESTORE);
 
 	return false;
 }
