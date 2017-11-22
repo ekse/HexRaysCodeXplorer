@@ -697,14 +697,14 @@ void fixDword(ea_t ea)
 void fixEa(ea_t ea)
 {
 #ifndef __EA64__
-	if (!isDwrd(get_flags_novalue(ea)))
+	if (!is_dword(get_flags(ea)))
 #else
 	if (!is_qword(get_flags(ea)))
 #endif
 	{
 		setUnknown(ea, sizeof(ea_t));
 #ifndef __EA64__
-		doDwrd(ea, sizeof(ea_t));
+	    create_dword(ea, sizeof(ea_t));
 #else
 		create_qword(ea, sizeof(ea_t));
 #endif
