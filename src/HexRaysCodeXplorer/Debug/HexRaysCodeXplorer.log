@@ -1,0 +1,4 @@
+﻿  MSVCObjectFormatParser.cpp
+MSVCObjectFormatParser.cpp(662): warning C4068: unknown pragma
+     Creating library C:\Program Files\IDA 7.0\plugins\HexRaysCodeXplorer.lib and object C:\Program Files\IDA 7.0\plugins\HexRaysCodeXplorer.exp
+  HexRaysCodeXplorer.vcxproj -> C:\Program Files\IDA 7.0\plugins\HexRaysCodeXplorer.plw
